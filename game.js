@@ -23,35 +23,46 @@ let imagenArriba;
 let imagenAbajo;
 let zombies;
 let boss;
+let boss_nuevo;
 let tiempoUltimoBoss = 0;
 let balas;
-let impactosZombie = {}; // Almacenar impactos por cada zombie
-let impactosBoss = 0; // Contador de impactos del boss
-let tiempoUltimoDisparo = 0; // Temporizador de disparo automático
+let impactosZombie = {};
+let impactosBoss = 0;
+let tiempoUltimoDisparo = 0;
+let gameOverImage;
 
 const TOPE_SUPERIOR = 250;
 const TOPE_INFERIOR = 500;
 const VELOCIDAD = 4;
 const VELOCIDAD_ZOMBIE = 2;
 const VELOCIDAD_BOSS = 1;
-const INTERVALO_BOSS = 30000; // 30 segundos
-const INTERVALO_DISPARO_AUTOMATICO = 500; // Intervalo en milisegundos para disparo automático
-const ANCHO_PANTALLA = 800; // Asumimos que la pantalla tiene un ancho de 800 píxeles
-const BORDE_DERECHO = ANCHO_PANTALLA + 200; // Aseguramos que los enemigos salgan más allá del borde (200 píxeles de offset)
+const INTERVALO_BOSS = 30000;
+const INTERVALO_DISPARO_AUTOMATICO = 500;
+const ANCHO_PANTALLA = 800;
+const BORDE_DERECHO = ANCHO_PANTALLA + 200;
+const BORDE_IZQUIERDO_BALA = 100;
+
+let vidaPared = 4;
+let imagenVidaPared = [];
+let prevVidaPared = -1;
+
+let contadorMuertesBoss = 0;  // Contador de muertes del boss
 
 function preload() {
-    console.log("Preload");
     this.load.image("fondo", "images/Fondo-juego.png");
     this.load.image("base", "images/pj-base.png");
     this.load.image("arriba", "images/pj-subiendo.png");
     this.load.image("abajo", "images/pj-bajando.png");
-    
-    // Cargar imágenes de los enemigos
     this.load.image("zombie", "images/zombie.png");
     this.load.image("boss", "images/boss.png");
-
-    // Cargar imagen de la bala
+    this.load.image("boss_nuevo", "images/zombie-boss.png");
     this.load.image("bala", "images/bala.png");
+    this.load.image("vida4", "images/vida4.png");
+    this.load.image("vida3", "images/vida3.png");
+    this.load.image("vida2", "images/vida2.png");
+    this.load.image("vida1", "images/vida1.png");
+    this.load.image("vida0", "images/vida0.png");
+    this.load.image("gameover", "images/game-over.png");
 }
 
 function create() {
@@ -65,7 +76,7 @@ function create() {
     cursors = this.input.keyboard.createCursorKeys();
 
     imagenArriba = this.add.sprite(100, 300, "arriba");
-    imagenAbajo = this.add.sprite(100, 300, "abajo");
+    imagenAbajo = this.add.sprite(50, 300, "abajo");
 
     imagenArriba.setDisplaySize(160, 190);
     imagenAbajo.setDisplaySize(160, 190);
@@ -73,28 +84,52 @@ function create() {
     imagenArriba.setVisible(false);
     imagenAbajo.setVisible(false);
 
-    // Inicializar grupo de zombies y balas
     zombies = this.add.group();
-    balas = this.add.group({
-        runChildUpdate: true // Habilitar actualización de las balas
-    });
+    balas = this.add.group({ runChildUpdate: true });
 
-    // Crear zombies cada 2 segundos
+    let pared = this.add.sprite(ANCHO_PANTALLA / 3.9, 300, "vida4");
+    pared.setOrigin(0.6, 0.5);
+    pared.setDisplaySize(5, 700);
+    imagenVidaPared.push(pared);
+
     this.time.addEvent({
-        delay: 2000, 
+        delay: 2000,
         callback: () => spawnZombie(this),
         loop: true
     });
 
     tiempoUltimoBoss = this.time.now;
-    
-    // Configurar la tecla para disparar
+
     this.input.keyboard.on('keydown-SPACE', function () {
         dispararBala(this);
+    });
+
+    // Agregar la imagen de "Game Over" pero mantenerla oculta al inicio
+    gameOverImage = this.add.image(ANCHO_PANTALLA / 1.55, 250, "gameover");
+    gameOverImage.setVisible(false);
+
+    // Asegurar que la imagen de Game Over esté siempre encima
+    gameOverImage.setDepth(10);
+
+    // Reiniciar el juego al presionar cualquier tecla
+    this.input.keyboard.on('keydown', () => {
+        if (gameOverImage.visible) {
+            reiniciarJuego(this);
+        }
     });
 }
 
 function update(time) {
+    if (vidaPared <= 0) {
+        gameOverImage.setVisible(true);
+        return;
+    }
+
+    if (time - tiempoUltimoBoss > INTERVALO_BOSS) {
+        spawnBoss(this);
+        tiempoUltimoBoss = time;
+    }
+
     imagenArriba.setVisible(false);
     imagenAbajo.setVisible(false);
     personaje.setVisible(true);
@@ -105,100 +140,150 @@ function update(time) {
     if (cursors.up.isDown && personaje.y > TOPE_SUPERIOR) {
         imagenArriba.setVisible(true);
         personaje.setVisible(false);
-        personaje.y -= VELOCIDAD;       
-    } 
+        personaje.y -= VELOCIDAD;
+    }
     else if (cursors.down.isDown && personaje.y < TOPE_INFERIOR) {
         imagenAbajo.setVisible(true);
         personaje.setVisible(false);
         personaje.y += VELOCIDAD;
     }
-    else {
+
+    if (!cursors.up.isDown && !cursors.down.isDown) {
         personaje.setVisible(true);
-        // Disparar automáticamente cuando el personaje esté quieto
         if (time - tiempoUltimoDisparo > INTERVALO_DISPARO_AUTOMATICO) {
             dispararBala(this);
-            tiempoUltimoDisparo = time; // Resetear el temporizador
+            tiempoUltimoDisparo = time;
         }
     }
 
-    // Mover zombies hacia la izquierda
     zombies.children.iterate((zombie) => {
         if (zombie) {
-            zombie.x -= VELOCIDAD_ZOMBIE;
-            if (zombie.x < -50) {
+            // Mover zombie hacia la izquierda si no ha tocado la pared
+            if (zombie.x > ANCHO_PANTALLA / 4.2 + 20 || zombie.x < ANCHO_PANTALLA / 4.2 - 20) {
+                zombie.x -= VELOCIDAD_ZOMBIE;
+            } else {
+                // Si el zombie toca la pared, se le quita 1 de vida a la pared y se destruye el zombie
+                vidaPared--;
                 zombie.destroy();
             }
+
+            // Destruir zombie si pasa el borde
+            if (zombie.x < -50) zombie.destroy();
         }
     });
 
-    // Mover el boss si existe
     if (boss) {
         boss.x -= VELOCIDAD_BOSS;
-        if (boss.x < -100) {
+        if (boss.x < ANCHO_PANTALLA / 4.2) {
+            vidaPared -= 3; // Reducir 3 de vida
             boss.destroy();
             boss = null;
+            contadorMuertesBoss++;  // Incrementar contador de muertes
+
+            // Cambiar el boss después de 5 muertes
+            if (contadorMuertesBoss >= 1) {
+                this.time.delayedCall(5000, () => spawnBossNuevo(this)); // Aparecer el nuevo boss después de 5 segundos
+                contadorMuertesBoss = 0;  // Resetear el contador de muertes
+            }
         }
     }
 
-    // Crear boss cada 30 segundos
+    if (boss_nuevo) {
+        boss_nuevo.x -= VELOCIDAD_BOSS;
+        if (boss_nuevo.x < ANCHO_PANTALLA / 4.2) {
+            vidaPared -= 3; // Reducir 3 de vida
+            boss_nuevo.destroy();
+            boss_nuevo = null;
+        }
+    }
+
     if (time - tiempoUltimoBoss > INTERVALO_BOSS) {
         spawnBoss(this);
         tiempoUltimoBoss = time;
     }
 
-    // Verificar colisiones entre las balas y los zombies/boss
     balas.children.iterate((bala) => {
         if (bala) {
+            if (bala.x < BORDE_IZQUIERDO_BALA - 1) {
+                bala.destroy();
+            }
+
             zombies.children.iterate((zombie) => {
                 if (zombie && Phaser.Geom.Intersects.RectangleToRectangle(bala.getBounds(), zombie.getBounds())) {
-                    // Contar impactos por cada zombie
-                    if (!impactosZombie[zombie]) {
-                        impactosZombie[zombie] = 0;
-                    }
-                    impactosZombie[zombie]++;
+                    impactosZombie[zombie] = (impactosZombie[zombie] || 0) + 1;
+                    bala.destroy();
 
-                    bala.destroy();  // Eliminar bala después de impactar
-
-                    if (impactosZombie[zombie] >= 2) { // El zombie muere después de 2 disparos
+                    if (impactosZombie[zombie] >= 2) {
                         zombie.destroy();
-                        delete impactosZombie[zombie]; // Resetear impactos
+                        delete impactosZombie[zombie];
                     }
                 }
             });
 
             if (boss && Phaser.Geom.Intersects.RectangleToRectangle(bala.getBounds(), boss.getBounds())) {
-                impactosBoss++;  // Incrementar los impactos del boss
-                bala.destroy();  // Eliminar bala después de impactar
+                impactosBoss++;
+                bala.destroy();
 
-                if (impactosBoss >= 6) { // El boss muere después de 6 disparos
+                if (impactosBoss >= 6) {
                     boss.destroy();
-                    impactosBoss = 0;  // Resetear los impactos
+                    impactosBoss = 0;
+                }
+            }
+            
+            // Corregir el impacto con el nuevo boss
+            if (boss_nuevo && Phaser.Geom.Intersects.RectangleToRectangle(bala.getBounds(), boss_nuevo.getBounds())) {
+                impactosBoss++;
+                bala.destroy();
+
+                if (impactosBoss >= 15) {
+                    boss_nuevo.destroy();
+                    impactosBoss = 0;
                 }
             }
         }
     });
+
+    // Actualizar la vida de la pared según la vida restante
+    if (vidaPared != prevVidaPared) {
+        prevVidaPared = vidaPared;
+        if (vidaPared == 3) {
+            imagenVidaPared[0].setTexture("vida3");
+        } else if (vidaPared == 2) {
+            imagenVidaPared[0].setTexture("vida2");
+        } else if (vidaPared == 1) {
+            imagenVidaPared[0].setTexture("vida1");
+        } else if (vidaPared == 0) {
+            imagenVidaPared[0].setTexture("vida0");
+        }
+    }
 }
+
 
 function spawnZombie(scene) {
     let y = Phaser.Math.Between(TOPE_SUPERIOR, TOPE_INFERIOR);
-    let zombie = scene.add.sprite(BORDE_DERECHO + 200, y, "zombie"); // Ajustamos la posición de aparición a la derecha
+    let zombie = scene.add.sprite(BORDE_DERECHO + 200, y, "zombie");
     zombie.setOrigin(0.5, 0.5);
-    
-    // Reducir el tamaño a la mitad y voltearlos
     zombie.setDisplaySize(zombie.width * 0.5, zombie.height * 0.5);
-    zombie.setFlipX(true); 
-
+    zombie.setFlipX(true);
     zombies.add(zombie);
 }
 
 function spawnBoss(scene) {
     if (!boss) {
         let y = Phaser.Math.Between(TOPE_SUPERIOR, TOPE_INFERIOR);
-        boss = scene.add.sprite(BORDE_DERECHO + 250, y, "boss"); // Ajustamos la posición de aparición a la derecha
+        boss = scene.add.sprite(BORDE_DERECHO + 250, y, "boss");
         boss.setOrigin(0.5, 0.5);
-        
-        // Reducir el tamaño a la mitad y voltearlo
         boss.setDisplaySize(boss.width * 0.5, boss.height * 0.5);
+        boss.setFlipX(true);
+    }
+}
+
+function spawnBossNuevo(scene) {
+    if (!boss) {
+        let y = Phaser.Math.Between(TOPE_SUPERIOR, TOPE_INFERIOR);
+        boss = scene.add.sprite(BORDE_DERECHO + 250, y, "boss_nuevo");
+        boss.setOrigin(0.5, 0.5);
+        boss.setDisplaySize(boss.width * 0.3, boss.height * 0.3);
         boss.setFlipX(true);
     }
 }
@@ -206,10 +291,24 @@ function spawnBoss(scene) {
 function dispararBala(scene) {
     let bala = scene.add.sprite(personaje.x + 50, personaje.y - 40, "bala");
     bala.setOrigin(0.5, 0.5);
-    bala.setDisplaySize(30, 15); // Tamaño de la bala
+    bala.setDisplaySize(30, 15);
 
-    // Habilitar física para la bala
     scene.physics.world.enable(bala);
-    bala.body.setVelocityX(500); // Velocidad de la bala hacia la derecha
+    bala.body.setVelocityX(500);
     balas.add(bala);
+}
+
+function reiniciarJuego(scene) {
+    vidaPared = 4;
+    imagenVidaPared[0].setTexture("vida4");
+    gameOverImage.setVisible(false);
+    zombies.clear(true, true);
+    balas.clear(true, true);
+    boss = null;
+    impactosZombie = {};
+    impactosBoss = 0;
+    tiempoUltimoDisparo = 0;
+    personaje.setPosition(100, 300);
+
+    tiempoUltimoBoss = scene.time.now;
 }
