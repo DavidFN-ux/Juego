@@ -1,3 +1,47 @@
+const config = {
+    type: Phaser.AUTO,
+    parent: "game",
+    scene: {
+        preload,
+        create,
+        update
+    },
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 0 },
+            debug: false
+        }
+    }
+}
+
+new Phaser.Game(config);
+
+let personaje;
+let cursors;
+let imagenArriba;
+let imagenAbajo;
+let zombies;
+let balas;
+let impactosZombie = {};
+let tiempoUltimoDisparo = 0;
+let gameOverImage;
+
+const TOPE_SUPERIOR = 250;
+const TOPE_INFERIOR = 500;
+const VELOCIDAD = 4;
+const VELOCIDAD_ZOMBIE = 2;
+const INTERVALO_DISPARO_AUTOMATICO = 500;
+const ANCHO_PANTALLA = 800;
+const BORDE_DERECHO = ANCHO_PANTALLA + 200;
+
+// Variable para controlar la distancia máxima de la bala
+let distanciaMaximaBala = 600; // Puedes modificar este valor según lo que necesites
+
+let vidaPared = 4;
+let imagenVidaPared;
+let prevVidaPared = -1;
+
 function preload() {
     this.load.image("fondo", "images/Fondo-juego.png");
     this.load.image("base", "images/pj-base.png");
@@ -35,12 +79,10 @@ function create() {
     zombies = this.add.group();
     balas = this.add.group({ runChildUpdate: true });
 
-    // Agregar pared de vida con imagen inicial
-    let pared = this.add.sprite(ANCHO_PANTALLA / 3.9, 300, "vida4");
-    pared.setOrigin(0.6, 0.5);
-    pared.setDisplaySize(5, 700);
-    pared.setVisible(true);  // Asegurarse de que la pared sea visible
-    imagenVidaPared.push(pared);
+    // Crear la imagen de vida del muro en la esquina superior izquierda
+    imagenVidaPared = this.add.sprite(50, 50, "vida4");
+    imagenVidaPared.setOrigin(0.5, 0.5);
+    imagenVidaPared.setDisplaySize(100, 100);
 
     this.time.addEvent({
         delay: 2000,
@@ -110,7 +152,8 @@ function update(time) {
 
     balas.children.iterate((bala) => {
         if (bala) {
-            if (bala.x < BORDE_IZQUIERDO_BALA - 1) {
+            // Verificar si la bala ha superado la distancia máxima
+            if (Math.abs(bala.x - bala.inicioX) > distanciaMaximaBala) {
                 bala.destroy();
             }
 
@@ -128,17 +171,47 @@ function update(time) {
         }
     });
 
-    // Actualizar la imagen de vida según la cantidad de vida
     if (vidaPared != prevVidaPared) {
         prevVidaPared = vidaPared;
-        if (vidaPared == 3) {
-            imagenVidaPared[0].setTexture("vida3");
-        } else if (vidaPared == 2) {
-            imagenVidaPared[0].setTexture("vida2");
-        } else if (vidaPared == 1) {
-            imagenVidaPared[0].setTexture("vida1");
-        } else if (vidaPared == 0) {
-            imagenVidaPared[0].setTexture("vida0");
+        if (vidaPared === 3) {
+            imagenVidaPared.setTexture("vida3");
+        } else if (vidaPared === 2) {
+            imagenVidaPared.setTexture("vida2");
+        } else if (vidaPared === 1) {
+            imagenVidaPared.setTexture("vida1");
+        } else if (vidaPared === 0) {
+            imagenVidaPared.setTexture("vida0");
         }
     }
+}
+
+function spawnZombie(scene) {
+    let y = Phaser.Math.Between(TOPE_SUPERIOR, TOPE_INFERIOR);
+    let zombie = scene.add.sprite(BORDE_DERECHO + 200, y, "zombie");
+    zombie.setOrigin(0.5, 0.5);
+    zombie.setDisplaySize(zombie.width * 0.5, zombie.height * 0.5);
+    zombie.setFlipX(true);
+    zombies.add(zombie);
+}
+
+function dispararBala(scene) {
+    let bala = scene.add.sprite(personaje.x + 50, personaje.y - 40, "bala");
+    bala.setOrigin(0.5, 0.5);
+    bala.setDisplaySize(30, 15);
+
+    // Guardar la posición inicial de la bala
+    bala.inicioX = bala.x;
+
+    scene.physics.world.enable(bala);
+    bala.body.setVelocityX(500);
+    balas.add(bala);
+}
+
+function reiniciarJuego(scene) {
+    vidaPared = 4;
+    imagenVidaPared.setTexture("vida4");
+    gameOverImage.setVisible(false);
+    zombies.clear(true, true);
+    balas.clear(true, true);
+    personaje.setPosition(100, 300);
 }
