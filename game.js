@@ -49,6 +49,8 @@ function preload() {
     this.load.image("arriba", "images/pj-subiendo.png");
     this.load.image("abajo", "images/pj-bajando.png");
     this.load.image("zombie", "images/zombie.png");
+    this.load.image("zombie2", "images/zombie2.png");
+    this.load.image("zombie3", "images/zombie3.png");
     this.load.image("bala", "images/bala.png");
     this.load.image("vida4", "images/vida4.png");
     this.load.image("vida3", "images/vida3.png");
@@ -57,7 +59,6 @@ function preload() {
     this.load.image("vida0", "images/vida0.png");
     this.load.image("gameover", "images/game-over.png");
     this.load.image("marco", "images/marco.png");
-
 }
 
 function create() {
@@ -86,9 +87,24 @@ function create() {
     imagenVidaPared.setOrigin(0.15, 0.5);
     imagenVidaPared.setDisplaySize(300, 90);
 
+    // Respawn de zombie1 (cada 2 segundos)
     this.time.addEvent({
         delay: 2000,
-        callback: () => spawnZombie(this),
+        callback: () => spawnZombie(this, "zombie", 1, 2), // 1 vida, respawn 2 segundos
+        loop: true
+    });
+
+    // Respawn de zombie2 (cada 3 segundos)
+    this.time.addEvent({
+        delay: 3000,
+        callback: () => spawnZombie(this, "zombie2", 2, 3), // 2 vida, respawn 3 segundos
+        loop: true
+    });
+
+    // Respawn de zombie3 (cada 7 segundos)
+    this.time.addEvent({
+        delay: 7000,
+        callback: () => spawnZombie(this, "zombie3", 3, 7), // 3 vida, respawn 7 segundos
         loop: true
     });
 
@@ -113,9 +129,8 @@ function create() {
         fill: '#FFFFFF'
     });
     let marco = this.add.image(this.sys.game.config.width, 0, "marco");
-
-marco.setOrigin(1, 0.2); // Cambiar el origen a la esquina superior derecha
-marco.setDisplaySize(400, 150); // Establecer el tamaño de la imagen (ajústalo según lo que necesites)
+    marco.setOrigin(1, 0.2); // Cambiar el origen a la esquina superior derecha
+    marco.setDisplaySize(400, 150); // Establecer el tamaño de la imagen (ajústalo según lo que necesites)
 }
 
 function update(time) {
@@ -174,7 +189,7 @@ function update(time) {
                     impactosZombie[zombie] = (impactosZombie[zombie] || 0) + 1;
                     bala.destroy();
 
-                    if (impactosZombie[zombie] >= 2) {
+                    if (impactosZombie[zombie] >= zombie.vida) {
                         zombie.destroy();
                         delete impactosZombie[zombie];
                     }
@@ -195,14 +210,25 @@ function update(time) {
     timerText.setText(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
 }
 
-function spawnZombie(scene) {
+function spawnZombie(scene, tipoZombie, vidaZombie, respawnTiempo) {
     let y = Phaser.Math.Between(TOPE_SUPERIOR, TOPE_INFERIOR);
-    let zombie = scene.add.sprite(BORDE_DERECHO + 200, y, "zombie");
+    let zombie = scene.add.sprite(BORDE_DERECHO + 200, y, tipoZombie);
     zombie.setOrigin(0.5, 0.5);
-    zombie.setDisplaySize(zombie.width * 0.5, zombie.height * 0.5);
+    
+    // Ajustar tamaño para zombie2 y zombie3
+    if (tipoZombie === "zombie2") {
+        zombie.setDisplaySize(zombie.width * 0.7, zombie.height * 0.7);  // Aumentar el tamaño
+    } else if (tipoZombie === "zombie3") {
+        zombie.setDisplaySize(zombie.width * 0.9, zombie.height * 0.9);  // Aumentar el tamaño aún más
+    } else {
+        zombie.setDisplaySize(zombie.width * 0.5, zombie.height * 0.5);  // Zombie base con tamaño pequeño
+    }
+
     zombie.setFlipX(true);
+    zombie.vida = vidaZombie; // Asignar vida al zombie
     zombies.add(zombie);
 }
+
 
 function dispararBala(scene) {
     let bala = scene.add.sprite(personaje.x + 50, personaje.y - 40, "bala");
